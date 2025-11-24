@@ -1,0 +1,24 @@
+[project]
+name = "clu-tester"
+version = "0.1.0"
+description = "Test tools for clu-middleware-tron"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click-default-group>=1.2.4",
+    "sdss-clu>=2.6.0",
+]
+
+[project.scripts]
+clu-tester = "clu_tester.__main__:clu_tester"
+
+[dependency-groups]
+dev = [
+    "ipdb>=0.13.13",
+    "ipython>=9.7.0",
+    "ruff>=0.14.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
