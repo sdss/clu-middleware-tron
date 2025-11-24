@@ -190,7 +190,10 @@ pub(crate) fn parse_reply<'a>(raw_reply: &[u8]) -> Option<Reply> {
     };
 
     // Process keywords.
-    process_keywords(keywords_raw, &mut reply);
+    if let Err(err) = process_keywords(keywords_raw, &mut reply) {
+        log::error!("Failed to parse keywords: {}", err);
+        return None;
+    }
 
     Some(reply)
 }

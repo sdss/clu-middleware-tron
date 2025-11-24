@@ -64,6 +64,7 @@ pub(crate) async fn start_tcp_client(
                 log::debug!("Connected to TCP server at {}:{}", host, port);
                 socket = s;
             }
+
             Err(e) => {
                 log::error!(
                     "Failed to connect to TCP server at {}:{}: {}",
@@ -98,8 +99,9 @@ pub(crate) async fn start_tcp_client(
                         sleep(Duration::from_secs_f32(config.reconnect_delay)).await;
                         break; // Break to outer loop to reconnect
                     }
-                    return Ok(()); // connection closed}
+                    return Ok(()); // connection closed
                 }
+
                 Ok(_) => {
                     // Strip newline characters
                     while let Some(&last) = line.last() {
@@ -120,15 +122,27 @@ pub(crate) async fn start_tcp_client(
                         );
                     }
 
-                    let reply = parse_reply(&line).unwrap();
-                    log::info!(
-                        "Parsed reply: commander={}, command_id={}, code={}, keywords={}",
-                        reply.commander,
-                        reply.command_id,
-                        reply.code,
-                        serde_json::to_string(&reply.keywords).unwrap()
-                    );
+                    if let Some(reply) = parse_reply(&line) {
+                        if config.log_messages && log::log_enabled!(config.log_level) {
+                            log::info!(
+                                "Parsed reply: commander={}, command_id={}, code={}, keywords={}",
+                                reply.commander,
+                                reply.command_id,
+                                reply.code,
+                                serde_json::to_string(&reply.keywords).unwrap()
+                            )
+                        }
+                    } else {
+                        log::warn!(
+                            "Failed to parse reply from {}:{}: {:?}",
+                            host,
+                            port,
+                            bytes::Bytes::from(line.clone())
+                        );
+                        continue;
+                    }
                 }
+
                 Err(e) => {
                     log::error!("Failed to read from stream: {}", e);
                     if config.reconnect {
