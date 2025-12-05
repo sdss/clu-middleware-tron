@@ -19,6 +19,12 @@ pub struct CommandID {
     pub command_ids: BTreeSet<u16>,
 }
 
+impl Default for CommandID {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandID {
     /// Creates a new CommandID manager with all command IDs available.
     pub fn new() -> Self {
@@ -56,7 +62,7 @@ impl CommandID {
             return Some(uuid);
         }
 
-        return None;
+        None
     }
 
     /// Retrieves the UUID associated with a given command ID, if it exists.

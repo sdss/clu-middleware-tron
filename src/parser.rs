@@ -30,7 +30,7 @@ pub struct Reply {
 /// * `key` - The key as a mutable byte vector.
 /// * `raw_values` - A mutable vector of byte arrays representing the raw values of the keyword.
 /// * `has_equal` - A boolean indicating whether the keyword had an equal sign (i.e., had a value).
-///     If false, the keyword is treated as having a Null value.
+///   If false, the keyword is treated as having a Null value.
 ///
 pub fn add_to_reply_keywords(
     reply: &mut Reply,
@@ -186,7 +186,7 @@ pub fn process_keywords(keywords: &[u8], reply: &mut Reply) -> Result<(), FromUt
 /// # Arguments
 /// * `raw_reply` - A byte slice containing the raw reply line.
 ///
-pub fn parse_reply<'a>(raw_reply: &[u8]) -> Option<Reply> {
+pub fn parse_reply(raw_reply: &[u8]) -> Option<Reply> {
     // Regular expression to parse the main components of the reply line.
     let line_regex = Regex::new(
         r"^(?<client_id>\d+)\s+(?<commandId>\d+)\s+(?<code>[diwfe:DIWFE>])\s*(?<keywords>.+)?$",

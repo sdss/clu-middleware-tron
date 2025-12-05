@@ -65,11 +65,13 @@ async fn main() -> ExitCode {
         rabbitmq_config.monitor_tcp_replies = true;
 
         // TCP configuration
-        let mut tcp_config = tcp::TCPClientConfig::default();
-        tcp_config.host = host.to_string();
-        tcp_config.port = port;
-        tcp_config.reconnect = cli.reconnect;
-        tcp_config.propagate_to_rabbitmq = true;
+        let tcp_config = tcp::TCPClientConfig {
+            host: host.to_string(),
+            port,
+            reconnect: cli.reconnect,
+            propagate_to_rabbitmq: true,
+            ..tcp::TCPClientConfig::default()
+        };
 
         // Launch both services
         let mut tasks = tokio::task::JoinSet::new();
@@ -118,16 +120,19 @@ async fn main() -> ExitCode {
                 }
             }
 
-            cli::Service::TCP => {
+            cli::Service::Tcp => {
                 // Listen for TCP messages without processing them.
 
                 log::info!("Listening for TCP messages on port {} ...", port);
 
                 // Launch TCP client.
-                let mut tcp_config = tcp::TCPClientConfig::default();
-                tcp_config.host = host.to_string();
-                tcp_config.port = port;
-                tcp_config.reconnect = cli.reconnect;
+                let tcp_config = tcp::TCPClientConfig {
+                    host: host.to_string(),
+                    port,
+                    reconnect: cli.reconnect,
+                    propagate_to_rabbitmq: false,
+                    ..tcp::TCPClientConfig::default()
+                };
 
                 if let Err(e) =
                     tcp::start_tcp_client(tcp_config, tcp_receiver, rabbitmq_sender).await

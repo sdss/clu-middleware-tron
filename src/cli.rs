@@ -86,5 +86,5 @@ pub(crate) enum Commands {
 #[value(rename_all = "lowercase")]
 pub(crate) enum Service {
     RabbitMQ,
-    TCP,
+    Tcp,
 }

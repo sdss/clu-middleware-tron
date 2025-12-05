@@ -121,12 +121,11 @@ pub async fn handle_replies(
 
                 // Routing key is 'reply.<commander_id>' unless this is a broadcast,
                 // in which case it is 'reply.broadcast'.
-                let routing_key: String;
-                if is_broadcast {
-                    routing_key = "reply.broadcast".to_string();
+                let routing_key = if is_broadcast {
+                    "reply.broadcast".to_string()
                 } else {
-                    routing_key = format!("reply.{}", commander_id);
-                }
+                    format!("reply.{}", commander_id)
+                };
 
                 // Serialize the keywords to JSON for the message payload.
                 let payload = serde_json::to_vec(&reply.keywords).unwrap();
@@ -146,7 +145,7 @@ pub async fn handle_replies(
                 }
 
                 // If the reply code indicates the command is finished, return the command ID to the pool.
-                if reply.code == ':' || reply.code.to_ascii_lowercase() == 'f' {
+                if reply.code == ':' || reply.code.eq_ignore_ascii_case(&'f') {
                     log::debug!(
                         "Command {} is finished with code '{}'. Returning command_id to the pool.",
                         reply.command_id,
@@ -201,9 +200,11 @@ pub async fn start_rabbitmq_service(
     log::debug!("Created RabbitMQ channel");
 
     // Declare a queue for receiving commands. It needs to be exclusive and not auto-delete.
-    let mut queue_options = QueueDeclareOptions::default();
-    queue_options.auto_delete = false;
-    queue_options.exclusive = true;
+    let queue_options = lapin::options::QueueDeclareOptions {
+        auto_delete: false,
+        exclusive: true,
+        ..Default::default()
+    };
     let queue = match channel
         .queue_declare(
             format!("{}_commands", config.actor_name).as_str(),
@@ -356,25 +357,33 @@ pub async fn process_command(
 ) {
     // Extract command_id and commander_id from headers.
     let command_id = get_header_value(delivery, "command_id");
-    let command_id = if command_id.is_none() {
-        log::warn!("Command ID not found in message headers");
-        return;
-    } else if let AMQPValue::LongString(id) = command_id.unwrap() {
-        id.to_string()
-    } else {
-        log::warn!("Command ID header is not a LongString");
-        return;
+    let command_id = match command_id {
+        Some(value) => match value {
+            AMQPValue::LongString(id) => id.to_string(),
+            _ => {
+                log::warn!("Command ID header is not a LongString");
+                return;
+            }
+        },
+        None => {
+            log::warn!("Command ID not found in message headers");
+            return;
+        }
     };
 
     let commander_id = get_header_value(delivery, "commander_id");
-    let commander_id = if commander_id.is_none() {
-        log::warn!("Commander ID not found in message headers");
-        return;
-    } else if let AMQPValue::LongString(id) = commander_id.unwrap() {
-        id.to_string()
-    } else {
-        log::warn!("Commander ID header is not a LongString");
-        return;
+    let commander_id = match commander_id {
+        Some(value) => match value {
+            AMQPValue::LongString(id) => id.to_string(),
+            _ => {
+                log::warn!("Commander ID header is not a LongString");
+                return;
+            }
+        },
+        None => {
+            log::warn!("Commander ID not found in message headers");
+            return;
+        }
     };
 
     // Deserialize the command payload.
