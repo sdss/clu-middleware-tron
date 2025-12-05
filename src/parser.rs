@@ -12,14 +12,27 @@ use std::{collections::BTreeMap, str::FromStr, string::FromUtf8Error};
 /// Represents a parsed reply from a Tron-style bytes string.
 #[derive(Debug)]
 pub struct Reply {
+    /// The client ID. This is the internal actor ID
+    ///     for the TCP client that sent the message. 0 for broadcast messages.
     pub client_id: u16,
+    /// The command ID associated with the reply.
     pub command_id: u32,
+    /// The reply code as a char.
     pub code: char,
+    /// A map of keyword-value pairs parsed from the reply.
     pub keywords: BTreeMap<String, serde_json::Value>,
 }
 
 /// Adds a key and its associated values to the `keywords` field of a [Reply] struct.
-fn add_to_reply_keywords(
+///
+/// # Arguments
+/// * `reply` - The Reply struct to which the keyword will be added.
+/// * `key` - The key as a mutable byte vector.
+/// * `raw_values` - A mutable vector of byte arrays representing the raw values of the keyword.
+/// * `has_equal` - A boolean indicating whether the keyword had an equal sign (i.e., had a value).
+///     If false, the keyword is treated as having a Null value.
+///
+pub fn add_to_reply_keywords(
     reply: &mut Reply,
     key: &mut Vec<u8>,
     raw_values: &mut Vec<Vec<u8>>,
@@ -33,7 +46,7 @@ fn add_to_reply_keywords(
     // Convert key to string.
     let key_string = String::from_utf8(key.clone())?;
 
-    // If there are no value or if the keyword was of the form "key;" (no equal sign), set to Null.
+    // If there are no values or if the keyword was of the form "key;" (no equal sign), set to Null.
     // Otherwise, parse each raw value into a serde_json::Value.
     if raw_values.is_empty() || !has_equal {
         reply.keywords.insert(key_string, Value::Null);
@@ -77,7 +90,12 @@ fn add_to_reply_keywords(
 }
 
 /// Processes the keywords section of a reply line and fills the `keyword` field in the [Reply] struct.
-fn process_keywords(keywords: &[u8], reply: &mut Reply) -> Result<(), FromUtf8Error> {
+///
+/// # Arguments
+/// * `keywords` - A byte slice containing the keywords section of the reply.
+/// * `reply` - A mutable reference to the Reply struct to be populated.
+///
+pub fn process_keywords(keywords: &[u8], reply: &mut Reply) -> Result<(), FromUtf8Error> {
     // Track if we are inside quotes or parsing a value (as opposed to a key).
     let mut in_double_quotes = false;
     let mut in_single_quotes = false;
@@ -164,6 +182,10 @@ fn process_keywords(keywords: &[u8], reply: &mut Reply) -> Result<(), FromUtf8Er
 }
 
 /// Parses a raw reply byte slice into a [Reply] struct.
+///
+/// # Arguments
+/// * `raw_reply` - A byte slice containing the raw reply line.
+///
 pub fn parse_reply<'a>(raw_reply: &[u8]) -> Option<Reply> {
     // Regular expression to parse the main components of the reply line.
     let line_regex = Regex::new(

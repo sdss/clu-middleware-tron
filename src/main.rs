@@ -7,28 +7,44 @@
 
 mod cli;
 
-use std::process::ExitCode;
+use std::{env, process::ExitCode};
 
 use async_channel::unbounded;
 use clap::Parser;
-use colored::Colorize;
 
 use cli::{Cli, Commands};
 use clu_middleware_tron::{parser, rabbitmq, tcp};
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Initialize logger. Set the default level to trace if RUST_LOG is not set.
+    // We will adjust the level later based on verbosity.
     let env = env_logger::Env::default()
-        .default_filter_or("info")
+        .default_filter_or("trace")
         .default_write_style_or("auto");
     env_logger::init_from_env(env);
 
     // Parse command line arguments
     let cli = Cli::parse();
 
-    // Global arguments
+    // TCP arguments
     let host = cli.host.as_str();
     let port = cli.port;
+
+    // RabbitMQ arguments
+    let rabbitmq_uri = cli.rabbitmq_uri.as_str();
+    let rabbitmq_exchange = cli.rabbitmq_exchange.as_str();
+
+    // Handle verbosity. If the RUST_LOG env variable is not set, adjust the log level
+    // according to the verbosity flag.
+    if env::var(env_logger::DEFAULT_FILTER_ENV).is_err() {
+        match cli.verbose {
+            0 => log::set_max_level(log::LevelFilter::Warn),
+            1 => log::set_max_level(log::LevelFilter::Info),
+            2 => log::set_max_level(log::LevelFilter::Debug),
+            _ => log::set_max_level(log::LevelFilter::Trace),
+        }
+    }
 
     // Selected subcommand
     let command = cli.command;
@@ -38,19 +54,24 @@ async fn main() -> ExitCode {
     let (rabbitmq_sender, rabbitmq_receiver) = unbounded::<parser::Reply>();
 
     if let Commands::Start { actor_name } = command {
+        // Start both TCP and RabbitMQ communication streams.
+
         log::info!("Starting TCP and RabbitMQ communication streams ...");
 
+        // RabbitMQ configuration
         let mut rabbitmq_config = rabbitmq::RabbitMQConfig::default(actor_name);
+        rabbitmq_config.uri = rabbitmq_uri.to_string();
+        rabbitmq_config.exchange = rabbitmq_exchange.to_string();
         rabbitmq_config.monitor_tcp_replies = true;
 
+        // TCP configuration
         let mut tcp_config = tcp::TCPClientConfig::default();
         tcp_config.host = host.to_string();
         tcp_config.port = port;
         tcp_config.reconnect = cli.reconnect;
         tcp_config.propagate_to_rabbitmq = true;
-        tcp_config.log_messages = true;
-        tcp_config.log_level = log::Level::Debug;
 
+        // Launch both services
         let mut tasks = tokio::task::JoinSet::new();
 
         tasks.spawn(async move {
@@ -78,9 +99,14 @@ async fn main() -> ExitCode {
     {
         match service {
             cli::Service::RabbitMQ => {
+                // Listen for RabbitMQ messages without processing them.
+
                 log::info!("Listening for RabbitMQ messages ...");
 
+                // Launch RabbitMQ service.
                 let mut rabbitmq_config = rabbitmq::RabbitMQConfig::default(actor_name);
+                rabbitmq_config.uri = rabbitmq_uri.to_string();
+                rabbitmq_config.exchange = rabbitmq_exchange.to_string();
                 rabbitmq_config.monitor_tcp_replies = false;
 
                 if let Err(e) =
@@ -93,16 +119,14 @@ async fn main() -> ExitCode {
             }
 
             cli::Service::TCP => {
-                log::info!(
-                    "Listening for TCP messages on port {} ...",
-                    port.to_string().cyan()
-                );
+                // Listen for TCP messages without processing them.
+
+                log::info!("Listening for TCP messages on port {} ...", port);
 
                 // Launch TCP client.
                 let mut tcp_config = tcp::TCPClientConfig::default();
                 tcp_config.host = host.to_string();
                 tcp_config.port = port;
-                tcp_config.log_messages = true;
                 tcp_config.reconnect = cli.reconnect;
 
                 if let Err(e) =

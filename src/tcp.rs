@@ -25,24 +25,18 @@ pub struct TCPClientConfig {
     pub reconnect: bool,
     /// Delay in seconds before attempting to reconnect.
     pub reconnect_delay: f32,
-    /// Whether to log received messages.
-    pub log_messages: bool,
-    /// Log level for message logging.
-    pub log_level: log::Level,
     /// Propagate parsed message to the RabbitMQ exchange.
     pub propagate_to_rabbitmq: bool,
 }
 
-/// Default configuration for the TCP client.
 impl Default for TCPClientConfig {
+    /// Creates a default TCP client configuration.
     fn default() -> Self {
         Self {
             host: String::from("127.0.0.1"),
             port: 8080,
             reconnect: false,
             reconnect_delay: 5.0,
-            log_messages: false,
-            log_level: log::Level::Info,
             propagate_to_rabbitmq: false,
         }
     }
@@ -62,13 +56,14 @@ pub async fn start_tcp_client(
     tcp_receiver: Receiver<BytesMut>,
     rabbitmq_sender: Sender<Reply>,
 ) -> Result<(), String> {
+    // Main connection loop. Reconnects if the connection is lost and reconnect is enabled.
     loop {
+        // Attempt to connect to the TCP server.
         let stream = match TcpStream::connect((config.host.as_str(), config.port)).await {
             Ok(s) => {
                 log::debug!("Connected to TCP server at {}:{}", config.host, config.port);
                 s
             }
-
             Err(e) => {
                 log::error!(
                     "Failed to connect to TCP server at {}:{}: {}",
@@ -87,27 +82,36 @@ pub async fn start_tcp_client(
             }
         };
 
+        // Split the stream into reader and writer and create buffered versions.
         let (reader, writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
         let mut writer = BufWriter::new(writer);
 
+        // Clone the receiver for the sending task. This is necessary because we are in a loop
+        // and if we reconnect the original receiver would be moved.
         let tcp_receiver_clone = tcp_receiver.clone();
+
+        // Monitor the TCP queue for commands to send to the actor.
         tokio::spawn(async move {
             while let Ok(message) = tcp_receiver_clone.recv().await {
-                log::debug!("Received message to send to TCP server: {:?}", message);
+                log::debug!("Processing command to send to actor: {:?}", message);
                 let message_lf = [message.as_ref(), b"\n"].concat();
                 if let Err(e) = writer.write_all(&message_lf).await {
-                    log::error!("Failed to send message to TCP server: {}", e);
-                    break;
+                    log::error!("Failed to send command to actor: {}", e);
+                    continue;
                 }
                 if let Err(e) = writer.flush().await {
-                    log::error!("Failed to flush message to TCP server: {}", e);
-                    break;
+                    log::error!("Failed to flush command to actor: {}", e);
+                    continue;
                 }
+                log::debug!("Command sent to actor: {:?}", message);
             }
         });
 
+        // Read from the actor TCP stream. Parse replies from the actor and
+        // propagate them to RabbitMQ if configured.
         loop {
+            // Read a line from the TCP stream. Handle EOF and errors.
             let mut line: Vec<u8> = Vec::new();
             match reader.read_until(b'\n', &mut line).await {
                 Ok(0) => {
@@ -121,6 +125,8 @@ pub async fn start_tcp_client(
                 }
 
                 Ok(_) => {
+                    // Successfully read a line. Parse and process it.
+
                     // Strip newline characters
                     while let Some(&last) = line.last() {
                         if last == b'\n' || last == b'\r' {
@@ -130,32 +136,29 @@ pub async fn start_tcp_client(
                         }
                     }
 
-                    if config.log_messages && log::log_enabled!(config.log_level) {
-                        log::log!(
-                            config.log_level,
-                            "Received from {}:{}: {:?}",
-                            config.host,
-                            config.port,
-                            bytes::Bytes::from(line.clone())
-                        );
-                    }
+                    log::debug!(
+                        "Received reply from {}:{}: {:?}",
+                        config.host,
+                        config.port,
+                        bytes::Bytes::from(line.clone())
+                    );
 
                     if let Some(reply) = parse_reply(&line) {
-                        if config.log_messages && log::log_enabled!(config.log_level) {
-                            log::info!(
-                                "Parsed reply: client_id={}, command_id={}, code={}, keywords={}",
-                                reply.client_id,
-                                reply.command_id,
-                                reply.code,
-                                serde_json::to_string(&reply.keywords).unwrap()
-                            )
-                        }
+                        log::info!(
+                            "Parsed reply: client_id={}, command_id={}, code={}, keywords={}",
+                            reply.client_id,
+                            reply.command_id,
+                            reply.code,
+                            serde_json::to_string(&reply.keywords).unwrap()
+                        );
 
                         if config.propagate_to_rabbitmq {
-                            log::debug!("Sending reply to RabbitMQ queue");
+                            log::debug!("Sending reply to RabbitMQ service for processing.");
                             log::debug!("Reply: {:?}", reply);
                             if let Err(e) = rabbitmq_sender.send(reply).await {
                                 log::error!("Failed to send reply to RabbitMQ queue: {}", e);
+                            } else {
+                                log::debug!("Reply sent to RabbitMQ service.");
                             }
                         }
                     } else {

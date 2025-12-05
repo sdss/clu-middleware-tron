@@ -28,9 +28,34 @@ pub(crate) struct Cli {
     #[arg(short = 'p', long, default_value_t = 8080, env = "TCP_PORT")]
     pub(crate) port: u16,
 
+    /// RabbitMQ URI.
+    #[arg(
+        short = 'u',
+        long,
+        global = true,
+        default_value_t = String::from("amqp://guest:guest@127.0.0.1:5672/%2f"),
+        env = "RABBITMQ_URI"
+    )]
+    pub(crate) rabbitmq_uri: String,
+
+    /// RabbitMQ exchange.
+    #[arg(
+        short = 'e',
+        long,
+        global = true,
+        default_value_t = String::from("sdss_exchange"),
+        env = "RABBITMQ_EXCHANGE"
+    )]
+    pub(crate) rabbitmq_exchange: String,
+
     /// Try to reconnect if the service is disconnected.
     #[arg(short = 'r', long, global = true, default_value_t = false)]
     pub(crate) reconnect: bool,
+
+    /// Verbosity level. Can be used multiple times to increase verbosity. Ignored
+    /// if RUST_LOG environment variable is set.
+    #[arg(short = 'v', long, global = true, action = clap::ArgAction::Count)]
+    pub(crate) verbose: u8,
 
     #[command(subcommand)]
     pub(crate) command: Commands,

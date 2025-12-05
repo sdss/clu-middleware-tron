@@ -10,17 +10,17 @@ use std::collections::BTreeSet;
 /// A structure to manage command IDs and their associated UUIDs.
 /// Command IDs are allocated from a pool of 0-255.
 /// When a command is finished, its ID is returned to the pool.
-///
-/// # Fields/
-/// - `command_map`: A HashMap mapping command IDs to UUID strings.
-/// - `command_ids`: A BTreeSet of available command IDs.
 pub struct CommandID {
+    /// A HashMap mapping command IDs to UUID strings.
     pub command_id_to_uuid: std::collections::HashMap<u16, String>,
+    /// A HashMap mapping UUID strings to commander names.
     pub uuid_to_commander: std::collections::HashMap<String, String>,
+    /// A BTreeSet of available command IDs.
     pub command_ids: BTreeSet<u16>,
 }
 
 impl CommandID {
+    /// Creates a new CommandID manager with all command IDs available.
     pub fn new() -> Self {
         Self {
             command_id_to_uuid: std::collections::HashMap::new(),
@@ -29,17 +29,21 @@ impl CommandID {
         }
     }
 
+    /// Registers a command with a given UUID, commander name, and command ID.
     pub fn register_command(&mut self, uuid: &str, commander: &str, command_id: u16) {
         self.command_id_to_uuid.insert(command_id, uuid.to_string());
         self.uuid_to_commander
             .insert(uuid.to_string(), commander.to_string());
     }
 
+    /// Retrieves and removes an available command ID from the pool.
     pub fn get_command_id(&mut self) -> u16 {
         let elt = self.command_ids.iter().next().cloned().unwrap();
         self.command_ids.take(&elt).unwrap()
     }
 
+    /// Finishes a command by its ID, removing its associations and returning the UUID.
+    /// The command ID is returned to the pool of available IDs.
     pub fn finish_command(&mut self, command_id: u16) -> Option<String> {
         let uuid = self.command_id_to_uuid.remove(&command_id);
 
@@ -55,14 +59,17 @@ impl CommandID {
         return None;
     }
 
+    /// Retrieves the UUID associated with a given command ID, if it exists.
     pub fn get_uuid(&self, command_id: u16) -> Option<&String> {
         self.command_id_to_uuid.get(&command_id)
     }
 
+    /// Checks if a command ID is currently in use.
     pub fn is_command_id_in_use(&self, command_id: u16) -> bool {
         self.command_id_to_uuid.contains_key(&command_id)
     }
 
+    /// Retrieves the commander name associated with a given UUID, if it exists.
     pub fn get_commander(&self, uuid: &str) -> Option<&String> {
         self.uuid_to_commander.get(uuid)
     }
