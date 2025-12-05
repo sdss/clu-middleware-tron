@@ -5,7 +5,6 @@
  *  @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
  */
 
-use std::io;
 use std::time::Duration;
 
 use async_channel::{Receiver, Sender};
