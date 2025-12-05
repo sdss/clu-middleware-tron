@@ -1,3 +1,6 @@
+# Before running this workflow go to the repository Settings > Pages and
+# set Build and deployment - Source to "GitHub Actions".
+
 name: Rust - Deploy docs
 
 on:
