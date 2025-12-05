@@ -3,7 +3,12 @@ name = "clu-middleware-tron"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["lib"]
+bench = false
+
 [dependencies]
+async-channel = "2.5.0"
 bytes = "1.11.0"
 clap = { version = "4.5.53", features = ["derive", "env"] }
 clap-cargo = "0.18.3"

@@ -8,15 +8,20 @@
 use std::io;
 use std::time::Duration;
 
+use async_channel::{Receiver, Sender};
+use bytes::BytesMut;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
-
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::time::sleep;
 
-use crate::parser::parse_reply;
+use crate::parser::{Reply, parse_reply};
 
 /// Configuration options for the TCP client.
-pub(crate) struct TCPClientConfig {
+pub struct TCPClientConfig {
+    /// Hostname or IP address of the TCP server.
+    pub host: String,
+    /// Port number of the TCP server.
+    pub port: u16,
     /// Whether the client should attempt to reconnect on disconnection.
     pub reconnect: bool,
     /// Delay in seconds before attempting to reconnect.
@@ -33,6 +38,8 @@ pub(crate) struct TCPClientConfig {
 impl Default for TCPClientConfig {
     fn default() -> Self {
         Self {
+            host: String::from("127.0.0.1"),
+            port: 8080,
             reconnect: false,
             reconnect_delay: 5.0,
             log_messages: false,
@@ -47,29 +54,27 @@ impl Default for TCPClientConfig {
 ///
 /// # Arguments
 ///
-/// * `host` - The hostname or IP address of the TCP server.
-/// * `port` - The port number of the TCP server.
 /// * `config` - Configuration options for the TCP client.
+/// * `tcp_receiver` - An async channel receiver for sending messages to the TCP server.
+/// * `rabbitmq_sender` - An async channel sender for propagating parsed messages to RabbitMQ.
 ///
-pub(crate) async fn start_tcp_client(
-    host: &str,
-    port: u16,
+pub async fn start_tcp_client(
     config: TCPClientConfig,
-) -> Result<(), io::Error> {
-    let mut socket: TcpStream;
-
+    tcp_receiver: Receiver<BytesMut>,
+    rabbitmq_sender: Sender<Reply>,
+) -> Result<(), String> {
     loop {
-        match TcpStream::connect((host, port)).await {
+        let stream = match TcpStream::connect((config.host.as_str(), config.port)).await {
             Ok(s) => {
-                log::debug!("Connected to TCP server at {}:{}", host, port);
-                socket = s;
+                log::debug!("Connected to TCP server at {}:{}", config.host, config.port);
+                s
             }
 
             Err(e) => {
                 log::error!(
                     "Failed to connect to TCP server at {}:{}: {}",
-                    host,
-                    port,
+                    config.host,
+                    config.port,
                     e
                 );
 
@@ -78,19 +83,33 @@ pub(crate) async fn start_tcp_client(
                     sleep(Duration::from_secs_f32(config.reconnect_delay)).await;
                     continue;
                 } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        "Failed to connect to TCP server",
-                    ));
+                    return Err("Failed to connect to TCP server".to_string());
                 }
             }
-        }
+        };
 
-        let mut reader = BufReader::new(socket);
+        let (reader, writer) = stream.into_split();
+        let mut reader = BufReader::new(reader);
+        let mut writer = BufWriter::new(writer);
+
+        let tcp_receiver_clone = tcp_receiver.clone();
+        tokio::spawn(async move {
+            while let Ok(message) = tcp_receiver_clone.recv().await {
+                log::debug!("Received message to send to TCP server: {:?}", message);
+                let message_lf = [message.as_ref(), b"\n"].concat();
+                if let Err(e) = writer.write_all(&message_lf).await {
+                    log::error!("Failed to send message to TCP server: {}", e);
+                    break;
+                }
+                if let Err(e) = writer.flush().await {
+                    log::error!("Failed to flush message to TCP server: {}", e);
+                    break;
+                }
+            }
+        });
 
         loop {
             let mut line: Vec<u8> = Vec::new();
-
             match reader.read_until(b'\n', &mut line).await {
                 Ok(0) => {
                     log::debug!("Connection closed by client");
@@ -116,8 +135,8 @@ pub(crate) async fn start_tcp_client(
                         log::log!(
                             config.log_level,
                             "Received from {}:{}: {:?}",
-                            host,
-                            port,
+                            config.host,
+                            config.port,
                             bytes::Bytes::from(line.clone())
                         );
                     }
@@ -125,18 +144,26 @@ pub(crate) async fn start_tcp_client(
                     if let Some(reply) = parse_reply(&line) {
                         if config.log_messages && log::log_enabled!(config.log_level) {
                             log::info!(
-                                "Parsed reply: commander={}, command_id={}, code={}, keywords={}",
-                                reply.commander,
+                                "Parsed reply: client_id={}, command_id={}, code={}, keywords={}",
+                                reply.client_id,
                                 reply.command_id,
                                 reply.code,
                                 serde_json::to_string(&reply.keywords).unwrap()
                             )
                         }
+
+                        if config.propagate_to_rabbitmq {
+                            log::debug!("Sending reply to RabbitMQ queue");
+                            log::debug!("Reply: {:?}", reply);
+                            if let Err(e) = rabbitmq_sender.send(reply).await {
+                                log::error!("Failed to send reply to RabbitMQ queue: {}", e);
+                            }
+                        }
                     } else {
                         log::warn!(
                             "Failed to parse reply from {}:{}: {:?}",
-                            host,
-                            port,
+                            config.host,
+                            config.port,
                             bytes::Bytes::from(line.clone())
                         );
                         continue;
@@ -148,7 +175,7 @@ pub(crate) async fn start_tcp_client(
                     if config.reconnect {
                         break;
                     } else {
-                        return Err(e);
+                        return Err(e.to_string());
                     }
                 }
             }

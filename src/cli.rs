@@ -5,9 +5,9 @@
  *  @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
  */
 
-pub use clap::Parser;
+use clap::Parser;
 use clap::{Subcommand, ValueEnum};
-pub use clap_cargo::style::CLAP_STYLING;
+use clap_cargo::style::CLAP_STYLING;
 
 /// clu-middleware-tron command line interface.
 #[derive(Parser, Debug)]
@@ -25,13 +25,7 @@ pub(crate) struct Cli {
     pub(crate) host: String,
 
     /// TCP port to use for communication.
-    #[arg(
-        short = 'p',
-        long,
-        global = true,
-        default_value_t = 8080,
-        env = "TCP_PORT"
-    )]
+    #[arg(short = 'p', long, default_value_t = 8080, env = "TCP_PORT")]
     pub(crate) port: u16,
 
     /// Try to reconnect if the service is disconnected.
@@ -45,13 +39,21 @@ pub(crate) struct Cli {
 #[derive(Subcommand, Debug)]
 pub(crate) enum Commands {
     /// Starts the TCP and RabbitMQ communication streams.
-    Start {},
+    Start {
+        /// Actor name
+        #[arg()]
+        actor_name: String,
+    },
 
     /// Listens for incoming TCP or RabbitMQ messages without processing them.
     Listen {
         /// Service to listen to.
         #[arg(value_enum)]
         service: Service,
+
+        /// Actor name
+        #[arg()]
+        actor_name: String,
     },
 }
 
