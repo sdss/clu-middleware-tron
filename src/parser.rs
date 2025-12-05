@@ -12,9 +12,9 @@ use std::{collections::BTreeMap, str::FromStr, string::FromUtf8Error};
 /// Represents a parsed reply from a Tron-style bytes string.
 #[derive(Debug)]
 pub struct Reply {
-    /// The client ID. This is the internal actor ID
-    ///     for the TCP client that sent the message. 0 for broadcast messages.
-    pub client_id: u16,
+    /// The user ID. This is the internal actor ID
+    ///   for the TCP client that sent the message. 0 for broadcast messages.
+    pub user_id: u16,
     /// The command ID associated with the reply.
     pub command_id: u32,
     /// The reply code as a char.
@@ -189,18 +189,18 @@ pub fn process_keywords(keywords: &[u8], reply: &mut Reply) -> Result<(), FromUt
 pub fn parse_reply(raw_reply: &[u8]) -> Option<Reply> {
     // Regular expression to parse the main components of the reply line.
     let line_regex = Regex::new(
-        r"^(?<client_id>\d+)\s+(?<commandId>\d+)\s+(?<code>[diwfe:DIWFE>])\s*(?<keywords>.+)?$",
+        r"^(?<user_id>\d+)\s+(?<commandId>\d+)\s+(?<code>[diwfe:DIWFE>])\s*(?<keywords>.+)?$",
     )
     .unwrap();
 
     let caps = line_regex.captures(raw_reply)?;
 
-    // Extract client_id and command ID, and initialize the Reply struct with an empty keywords map.
-    let client_id = String::from_utf8(caps.name("client_id")?.as_bytes().to_vec()).ok()?;
+    // Extract user_id and command ID, and initialize the Reply struct with an empty keywords map.
+    let user_id = String::from_utf8(caps.name("user_id")?.as_bytes().to_vec()).ok()?;
     let command_id = String::from_utf8(caps.name("commandId")?.as_bytes().to_vec()).ok()?;
 
     let mut reply = Reply {
-        client_id: client_id.parse::<u16>().unwrap(),
+        user_id: user_id.parse::<u16>().unwrap(),
         command_id: command_id.parse::<u32>().unwrap(),
         code: caps.name("code")?.as_bytes()[0] as char,
         keywords: BTreeMap::new(),
@@ -230,7 +230,7 @@ mod tests {
         let test_reply =
             parse_reply(b"1 20 : key1=value1; key2=42; key3=3.14; key4=T; key5=None; key6=1,F,three,\"a string; with; semicolons\"; key7=\"A string with spaces\";key8 ; key9=\"A string; with; semicolons\"; key10=\"A sentence with 'a quotation'\"").unwrap();
 
-        assert_eq!(test_reply.client_id, 1);
+        assert_eq!(test_reply.user_id, 1);
         assert_eq!(test_reply.command_id, 20);
         assert_eq!(test_reply.code, ':');
 

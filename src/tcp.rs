@@ -145,8 +145,8 @@ pub async fn start_tcp_client(
 
                     if let Some(reply) = parse_reply(&line) {
                         log::info!(
-                            "Parsed reply: client_id={}, command_id={}, code={}, keywords={}",
-                            reply.client_id,
+                            "Parsed reply: user_id={}, command_id={}, code={}, keywords={}",
+                            reply.user_id,
                             reply.command_id,
                             reply.code,
                             serde_json::to_string(&reply.keywords).unwrap()
